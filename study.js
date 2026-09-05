@@ -19,3 +19,7 @@ console.log(langs.map(l => l.toUpperCase()));
 // Lesson 4: Objects
 const user = { name, age, city };
 console.log(Object.keys(user));
+
+
+// Lesson 5: Loops and conditionals
+for (const l of ['js','py']) { if (l === 'js') console.log('favorite: ' + l); }
