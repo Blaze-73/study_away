@@ -14,3 +14,8 @@ const add = (a, b) => a + b;
 const langs = ['js', 'python', 'go'];
 langs.push('rust');
 console.log(langs.map(l => l.toUpperCase()));
+
+
+// Lesson 4: Objects
+const user = { name, age, city };
+console.log(Object.keys(user));
