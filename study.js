@@ -28,3 +28,8 @@ for (const l of ['js','py']) { if (l === 'js') console.log('favorite: ' + l); }
 // Lesson 6: Promises and async
 async function fetchData() { return await Promise.resolve([1,2,3]); }
 fetchData().then(console.log);
+
+
+// Lesson 7: Mini project - todo counter
+const todos = [{t:'learn js', done:true},{t:'push to github', done:false}];
+console.log('done:', todos.filter(x => x.done).length + '/' + todos.length);
