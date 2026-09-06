@@ -1,0 +1,203 @@
+# ============================================================================
+# GitHub Actions CI/CD Pipeline - Annotated for Learning
+# ============================================================================
+# This file tells GitHub what to do every time you push code or open a PR.
+# Place it in: .github/workflows/ci.yml
+# ============================================================================
+
+# NAME: This is the name shown in the "Actions" tab of your GitHub repo
+name: CI/CD Pipeline
+
+# ============================================================================
+# TRIGGERS: When should this pipeline run?
+# ============================================================================
+on:
+  # "push" means: every time code is pushed to these branches
+  push:
+    branches : [main,develop]  # runs on pushes to main OR develop
+
+  # "pull_request" means: every time a PR targets these branches
+  pull_request:
+    branches: [main]  # runs when someone opens a PR to merge into main
+
+  # "workflow_dispatch" means: you can manually trigger it from the Actions tab
+  workflow_dispatch:  # useful for re-running failed pipelines
+
+# ============================================================================
+# JOBS: A pipeline is made of "jobs". Each job runs on a separate VM.
+# ============================================================================
+jobs:
+  # --------------------------------------------------------------------------
+  # JOB 1: lint - Check code style & quality
+  # --------------------------------------------------------------------------
+  lint:
+    # "runs-on" = what operating system the job runs on
+    # Options: ubuntu-latest, windows-latest, macos-latest
+    runs-on: ubuntu-latest
+
+    # "steps" = a sequence of commands to run, in order
+    steps:
+      # STEP 1: Check out your code
+      # actions/checkout@v4 is a pre-built action from GitHub
+      # "with" provides parameters to that action
+      - name: Checkout code        # human-readable name for this step
+        uses: actions/checkout@v4  # uses the official checkout action
+        # without this, the VM wouldn't have your code
+
+      # STEP 2: Set up Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'  # which Node.js version to install
+          # You can also use: 18, 20, 22, or 'lts/*' for latest LTS
+
+      # STEP 3: Cache dependencies (speeds up future runs)
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm           # where to store cached files
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          # key = unique identifier; changes when package-lock.json changes
+          # runner.os = "Linux", "Windows", or "macOS" — makes cache OS-specific
+          restore-keys: |
+            ${{ runner.os }}-npm-
+            # fallback: if exact match not found, use any cache from same OS
+
+      # STEP 4: Install dependencies
+      - name: Install dependencies
+        run: npm ci
+        # npm ci = clean install (faster & stricter than npm install)
+        # it deletes node_modules and installs from package-lock.json exactly
+
+      # STEP 5: Run linter
+      - name: Run ESLint
+        run: npm run lint
+        # runs whatever "lint" script is in your package.json
+        # e.g., "lint": "eslint . --ext .js,.ts"
+
+  # --------------------------------------------------------------------------
+  # JOB 2: test - Run your test suite
+  # --------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+
+    # "needs" = this job depends on another job
+    # "lint" must pass before "test" runs
+    # If lint fails, test won't even start
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # STEP: Run tests with coverage
+      - name: Run tests
+        run: npm test -- --coverage
+        # --coverage generates a report showing % of code covered by tests
+
+      # STEP: Upload coverage report as an artifact
+      # Artifacts are files you can download after the workflow finishes
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()  # run this even if previous steps failed
+        with:
+          name: coverage-report              # name of the downloadable file
+          path: coverage/                    # folder to upload
+          retention-days: 7  # auto-delete after 7 days (saves storage)
+
+  # --------------------------------------------------------------------------
+  # JOB 3: build - Build your project
+  # --------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    needs: test  # only runs after tests pass
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+        # builds your app (e.g., compiles TypeScript, bundles with Vite, etc.)
+
+      # STEP: Upload build output as artifact
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/  # typical output folder for Vite/TypeScript builds
+
+  # --------------------------------------------------------------------------
+  # JOB 4: deploy - Deploy to production (only on main branch)
+  # --------------------------------------------------------------------------
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build  # only runs after build succeeds
+
+    # "if" = conditional — only run this job under specific conditions
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # github.ref = the branch being pushed (refs/heads/main)
+    # github.event_name = what triggered the workflow (push vs pull_request)
+    # This means: deploy ONLY on push to main, NOT on PRs
+
+    # "environment" = GitHub environment (for secrets & deployment protection)
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+      # references the "url" output from step named "deploy" below
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      # STEP: Deploy (example: Vercel)
+      - name: Deploy to Vercel
+        id: deploy  # id lets us reference this step's outputs later
+        run: |
+          npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+          echo "url=https://your-app.vercel.app" >> $GITHUB_OUTPUT
+        # secrets.VERCEL_TOKEN = stored secret in repo settings
+        # >> $GITHUB_OUTPUT = saves the URL for later steps to use
+        # NEVER hardcode tokens — always use secrets!
+
+# ============================================================================
+# SECRETS: Sensitive data (tokens, API keys) stored in GitHub repo settings
+# ============================================================================
+# Go to: Settings > Secrets and variables > Actions > New repository secret
+# Then reference them as: ${{ secrets.SECRET_NAME }}
+#
+# Common secrets for fullstack apps:
+#   VERCEL_TOKEN        - Vercel deployment token
+#   DATABASE_URL        - Your database connection string
+#   OPENAI_API_KEY      - OpenAI API key (for AI projects)
+#   DOCKERHUB_TOKEN     - Docker Hub access token
+#
+# NEVER commit secrets to your code. GitHub will warn you if you try.
+# ============================================================================
