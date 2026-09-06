@@ -121,8 +121,8 @@ jobs:
     needs: test  # only runs after tests pass
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      -name : Checkout code
+      usess: actions/Checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
